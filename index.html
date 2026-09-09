@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Using Reward Uncertainty to Induce Diverse Behaviour in RL</title>
+  <meta name="description" content="Diversity as the rational response to reward uncertainty: ROSA replaces the scalar reward with a distribution over reward functions, inducing calibrated behavioural diversity without sacrificing expected reward.">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Using Reward Uncertainty to Induce Diverse Behaviour in Reinforcement Learning">
+  <meta property="og:description" content="Diversity is a rational response to uncertainty about the true reward function. ROSA trains a policy whose action probabilities are calibrated to reward uncertainty, with a single change to the advantage.">
+  <meta property="og:url" content="https://im-ant.github.io/rosa/">
+  <meta property="og:image" content="https://im-ant.github.io/rosa/static/images/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Using Reward Uncertainty to Induce Diverse Behaviour in RL">
+  <meta name="twitter:description" content="Diversity is a rational response to uncertainty about the true reward function. ROSA calibrates action probabilities to reward uncertainty with a single change to the advantage.">
+  <meta name="twitter:image" content="https://im-ant.github.io/rosa/static/images/og.png">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#127801;</text></svg>">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+
+  <script>
+    MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] } };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <script defer src="static/js/widgets.js?v=260909b"></script>
+
+  <style>
+    :root {
+      --ink: #16181d;
+      --muted: #5b6069;
+      --faint: #9aa0a8;
+      --hairline: #e7e8ea;
+      --wash: #f7f7f8;
+      --accent: #d6336c;
+      --todo: #b78103;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: #fff;
+      line-height: 1.7;
+      font-size: 1.02rem;
+      font-feature-settings: 'cv05' 1, 'cv11' 1;
+    }
+    .col { max-width: 46rem; margin: 0 auto; padding: 0 1.4rem; }
+
+    header { padding: 4.5rem 0 2.6rem; }
+    h1 {
+      font-size: clamp(1.8rem, 4.6vw, 2.55rem);
+      line-height: 1.16;
+      font-weight: 800;   /* only 700 and 800 are loaded; browsers were already resolving 750 to 800 */
+      letter-spacing: -0.022em;
+      margin-bottom: 1.6rem;
+    }
+    .authors { font-size: 0.98rem; line-height: 1.9; color: var(--ink); }
+    .authors a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--hairline); }
+    .authors a:hover { border-bottom-color: var(--accent); color: var(--accent); }
+    .authors sup { font-size: 0.66em; color: var(--muted); margin-left: 1px; }
+    .affils { margin-top: 0.7rem; font-size: 0.85rem; color: var(--muted); line-height: 1.75; }
+    .links { margin-top: 1.7rem; display: flex; flex-wrap: wrap; gap: 0.6rem; }
+    .links a {
+      display: inline-block;
+      border: 1px solid #d7d9dc;
+      border-radius: 999px;
+      padding: 0.42rem 1.05rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--ink);
+      text-decoration: none;
+      transition: border-color .15s, color .15s;
+    }
+    .links a:hover { border-color: var(--accent); color: var(--accent); }
+
+    section { padding: 2.6rem 0; border-top: 1px solid var(--hairline); }
+    .kicker {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 1.1rem;
+    }
+    .kicker b { color: var(--accent); font-weight: 500; }
+    h2 { font-size: 1.32rem; font-weight: 700; letter-spacing: -0.012em; margin-bottom: 1rem; }
+    p + p { margin-top: 1rem; }
+    em { font-style: italic; }
+    p.q { font-weight: 600; margin-top: 1.2rem; }
+
+    .pullquote {
+      margin: 2rem 0;
+      padding: 0.35rem 0 0.35rem 1.4rem;
+      border-left: 3px solid var(--accent);
+      font-size: 1.26rem;
+      line-height: 1.5;
+      font-weight: 600;
+      letter-spacing: -0.012em;
+    }
+
+    figure { margin: 1.8rem 0 0.4rem; }
+    figure img { width: 100%; height: auto; display: block; border-radius: 6px; }
+    figcaption { margin-top: 0.75rem; font-size: 0.855rem; line-height: 1.6; color: var(--muted); }
+    .fig-no { font-weight: 700; font-style: normal; color: var(--ink); }
+    .imgrow { display: grid; grid-template-columns: 1.35fr 1fr; gap: 0.9rem; align-items: center; }
+    @media (max-width: 620px) { .imgrow { grid-template-columns: 1fr; } }
+
+    .eq { margin: 1.4rem 0; overflow-x: auto; }
+    .note { font-size: 0.9rem; color: var(--muted); margin-top: 1.2rem; }
+    ul.points {
+      margin: 0.7rem 0 1rem;
+      padding-left: 1.5em;
+      list-style: disc;
+    }
+
+    /* widgets */
+    .widget {
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 1rem 1rem 0.8rem;
+      margin: 1.8rem 0;
+      background: #fff;
+    }
+    .widget canvas { display: block; width: 100%; max-width: 100%; min-width: 0; }
+    /* only the two draggable canvases capture touch; elsewhere a finger on a canvas should still scroll the page */
+    #calib-widget .cwrap canvas, .f-canvas { touch-action: none; }
+    .widget .panels { display: flex; gap: 0.9rem; flex-wrap: wrap; justify-content: center; }
+    .cpanel { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; min-width: 0; }
+    .cwrap { position: relative; display: block; line-height: 0; width: 100%; min-width: 0; }
+    /* reward | π(Y|X) gutter | PG+ROSA. Shrink these gaps to grow the heatmaps. */
+    #calib-widget .panels {
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 0.35rem;   /* left ↔ middle: air around π(Y|X); try 0.2–0.6rem */
+    }
+    #calib-widget .cgroup {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 0;         /* middle ↔ right: 0 = flush; try 0.08–0.2rem to separate */
+      min-width: 0;
+      align-items: flex-start;
+    }
+    #calib-widget .cpanel { flex: 0 0 auto; }
+    #calib-widget .cwrap { width: auto; }
+    #calib-widget canvas { width: auto; max-width: none; }
+    /* simplex + trace-column variants: JS sizes the columns to fit; wrap only when narrow */
+    .widget .panels.tri { flex-wrap: nowrap; align-items: flex-start; }
+    @media (max-width: 620px) { .widget .panels.tri { flex-wrap: wrap; } }
+    .drag-hint {
+      position: absolute;
+      left: 0.4rem; bottom: 0.4rem;
+      pointer-events: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase;
+      color: rgba(255,255,255,0.92);
+      background: rgba(22,24,29,0.5);
+      border-radius: 4px;
+      padding: 0.16rem 0.4rem;
+    }
+    .pcap {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted);
+      width: 0; min-width: 100%; text-align: center; line-height: 1.4;   /* never drives panel width */
+    }
+    .widget-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap;
+      padding: 0.6rem 0.2rem 0.3rem;
+    }
+    .widget-bar .ctl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem; color: var(--muted);
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+    .widget-bar input[type=range] { accent-color: var(--accent); width: 120px; }
+    .widget-bar button {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem; font-weight: 600;
+      color: var(--muted);
+      background: #fff;
+      border: 1px solid var(--hairline);
+      border-radius: 6px;
+      padding: 0.28rem 0.75rem;
+      cursor: pointer;
+    }
+    .widget-bar button:hover { color: var(--accent); border-color: var(--accent); }
+    .seg { display: inline-flex; border: 1px solid var(--hairline); border-radius: 6px; overflow: hidden; }
+    .seg button { border: 0; border-radius: 0; }
+    .seg button + button { border-left: 1px solid var(--hairline); }
+    .seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .seg button.active:hover { color: #fff; }
+    .bag-seg { display: flex; flex-wrap: wrap; gap: 0.28rem; }
+    .bag-btn { font-size: 0.92rem; letter-spacing: 0.06em; padding: 0.15rem 0.4rem; }
+    .bag-seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .bag-seg button.active:hover { color: #fff; }
+    .fineprint { font-size: 0.78rem; color: var(--faint); line-height: 1.55; padding: 0.2rem 0.2rem 0.4rem; }
+    .step-count { font-family: 'JetBrains Mono', monospace; }
+    .sf-badge b.okk { color: #2b8a3e; font-weight: 600; }
+    .sf-badge b.warn { color: var(--todo); font-weight: 600; }
+    /* preset category dots: diverse (green) / deterministic (amber) / collapse (red) */
+    .sf-btn::before {
+      content: ""; display: inline-block;
+      width: 6px; height: 6px; border-radius: 50%;
+      margin-right: 0.4rem; vertical-align: middle;
+      background: var(--faint);
+    }
+    .sf-btn[data-cat="diverse"]::before { background: #2b8a3e; }
+    .sf-btn[data-cat="det"]::before { background: var(--todo); }
+    .sf-btn[data-cat="collapse"]::before { background: #c92a2a; }
+    /* keep dots readable on the accent-filled active button */
+    .seg .sf-btn.active::before { box-shadow: 0 0 0 1px rgba(255,255,255,0.85); }
+
+    /* advantage-computation trace (distill-style)
+       one shared grid (subgrid rows) so header / body / summary columns align by construction.
+       --adv-side: inset from the figure's left/right edges
+       --adv-gutter: min gap between world / PG / ROSA groups (grows to fill width) */
+    .adv-trace { --adv-side: 0.75rem; --adv-gutter: 1.6rem; }
+    .adv-trace .adv-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; padding-bottom: 0.7rem; }
+    .adv-trace .adv-scenario { font-size: 0.82rem; color: var(--muted); padding: 0.1rem 0.2rem; }
+    .adv-trace .adv-def { font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; color: var(--muted); white-space: nowrap; padding: 0.1rem 0.2rem; }
+    .adv-trace .adv-panels { width: 100%; overflow-x: auto; }
+    .adv-grid {
+      display: grid;
+      grid-template-columns:
+        1.7rem 1.7rem 2.4rem 2.4rem
+        minmax(var(--adv-gutter), 1fr)
+        2.85rem 2.85rem
+        minmax(var(--adv-gutter), 1fr)
+        2.4rem 2.4rem 2.4rem;
+      column-gap: 4px; row-gap: 4px;
+      padding: 0.4rem var(--adv-side) 0.2rem;
+      align-items: center; justify-items: center;
+      min-width: 30rem;
+    }
+    .trow { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; justify-items: center; }
+    .trow.body { cursor: pointer; }
+    .ap-title {
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted);
+    }
+    .ap-title.rosa { color: var(--accent); }
+    .chead {
+      text-align: center; align-self: end; line-height: 1.25;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--muted);
+    }
+    .chead .rho { display: block; color: var(--faint); font-size: 0.6rem; }
+    .glab { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--muted); text-align: center; }
+    .gglyph { font-size: 1.05rem; text-align: center; }
+    .trow.sel .glab { color: var(--ink); font-weight: 600; }
+    .ac {
+      width: 2.4rem; height: 2.4rem;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--hairline); border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.76rem;
+      background: #fff; position: relative;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    .trow.sel .ac { border-color: var(--ink); }
+    .ac.rbar { background: var(--wash); }
+    .ac.src { border: 1px dashed var(--accent); box-shadow: 0 0 0 0.8px var(--accent); }
+    .ac.selsrc { border: 1px solid var(--accent); box-shadow: 0 0 0 0.8px var(--accent); }
+    .ac.setmax::after {
+      content: ''; position: absolute; top: 3px; right: 3px;
+      width: 5px; height: 5px; border-radius: 50%; background: var(--dot, var(--faint));
+    }
+    .ac.credit { box-shadow: 0 0 0 2.2px var(--accent); }
+    .ac.term { box-shadow: 0 0 0 2.2px var(--term, var(--accent)); }
+    .ac.pos { color: var(--accent); font-weight: 600; }
+    .ac.neg { color: #3b5bdb; font-weight: 600; }
+    .ac.zero { color: var(--faint); }
+    .ac.loosrc { box-shadow: 0 0 0 1.6px currentColor; }
+    .adv-explain {
+      display: flex; flex-direction: column; gap: 3px;
+      padding: 0.6rem var(--adv-side) 0.1rem;
+      min-height: 2.9em; overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--muted);
+    }
+    .adv-explain .ex { white-space: nowrap; }
+    .adv-explain .tag { color: var(--muted); margin-right: 0.3rem; }
+    .adv-explain .tag.rosa { color: var(--accent); }
+    .adv-explain b:not(.tag) { color: var(--ink); font-weight: 600; }
+    .adv-explain .chip {
+      display: inline-block;
+      padding: 0 0.28em;
+      margin: 0 0.08em;
+      border-radius: 4px;
+      border: 1px solid;
+      font-weight: 600;
+      line-height: 1.4;
+      vertical-align: baseline;
+    }
+    .adv-explain .chip.rbar-chip {
+      color: var(--accent);
+      background: var(--wash);
+      border-color: var(--accent);
+    }
+    .adv-trace[data-adv-mode="formula"] {
+      --adv-gutter: 1.25rem;
+      --active-bg: rgba(22, 24, 29, 0.035);
+    }
+    .adv-trace[data-adv-mode="formula"] .adv-grid {
+      grid-template-columns:
+        1.7rem 1.7rem 2.4rem 2.4rem
+        minmax(var(--adv-gutter), 1fr)
+        2.85rem 2.85rem
+        minmax(var(--adv-gutter), 1fr)
+        2.7rem 2.7rem 3.4rem;
+      min-width: 32rem;
+    }
+    .adv-trace[data-adv-mode="formula"] .trow.body {
+      border-radius: 8px;
+      transition: background-color .14s ease;
+    }
+    .adv-trace[data-adv-mode="formula"] .trow.body.sel {
+      background: var(--active-bg);
+    }
+    .adv-explain .chip.mean-chip {
+      color: var(--muted);
+      background: var(--wash);
+      border-color: var(--hairline);
+    }
+    .adv-explain .chip.adv-chip.pos,
+    .adv-trace[data-adv-mode="formula"] .ac.adv-final.pos {
+      color: var(--accent);
+      background: rgba(214, 51, 108, 0.10);
+      border-color: rgba(214, 51, 108, 0.45);
+    }
+    .adv-explain .chip.adv-chip.neg,
+    .adv-trace[data-adv-mode="formula"] .ac.adv-final.neg {
+      color: #3b5bdb;
+      background: rgba(59, 91, 219, 0.08);
+      border-color: rgba(59, 91, 219, 0.40);
+    }
+    .adv-explain .chip.adv-chip.zero,
+    .adv-trace[data-adv-mode="formula"] .ac.adv-final.zero {
+      color: var(--faint);
+      background: #fff;
+      border-color: var(--hairline);
+    }
+    .adv-trace[data-adv-mode="formula"] .ac.credit,
+    .adv-trace[data-adv-mode="formula"] .adv-explain .chip.hot {
+      box-shadow: 0 0 0 1.3px var(--term, var(--accent));
+    }
+    .adv-trace[data-adv-mode="formula"] .adv-explain {
+      color: var(--ink);
+      margin: 0.6rem var(--adv-side) 0.1rem;
+      padding: 0.48rem 0.6rem;
+      background: var(--active-bg);
+      border-radius: 8px;
+    }
+    .adv-trace[data-adv-mode="formula"] .adv-explain .chip.rbar-chip {
+      color: var(--ink);
+      border-style: dashed;
+      border-width: 1.5px;
+      font-weight: 400;
+    }
+    .adv-trace[data-adv-mode="formula"] .adv-explain .chip.cold,
+    .adv-trace[data-adv-mode="formula"] .adv-explain .chip.adv-chip.zero {
+      font-weight: 400;
+    }
+    .adv-trace[data-adv-mode="formula"] .adv-explain .chip.mean-chip,
+    .adv-trace[data-adv-mode="formula"] .ac.w0,
+    .adv-trace[data-adv-mode="formula"] .ac.w1 {
+      font-weight: 400;
+    }
+    .adv-trace[data-adv-mode="formula"] .ac.rbar.src,
+    .adv-trace[data-adv-mode="formula"] .ac.rbar.selsrc {
+      box-shadow: none;
+    }
+    .adv-trace[data-adv-mode="formula"] .ac.rbar.selsrc {
+      border-color: var(--accent);
+      border-style: dashed;
+      border-width: 1.5px;
+    }
+    .adv-trace[data-adv-mode="formula"] .trow.sel .ac.adv-final:not(.zero),
+    .adv-trace[data-adv-mode="formula"] .adv-explain .chip.adv-chip:not(.zero) {
+      box-shadow: 0 0 0 1.4px currentColor;
+    }
+
+    /* two-column estimator comparison */
+    .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin: 1.6rem 0; }
+    @media (max-width: 780px) { .twocol { grid-template-columns: 1fr; } }
+    .estcard { border: 1px solid var(--hairline); border-radius: 10px; overflow: hidden; }
+    .estcard .est-head {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.74rem; letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 0.55rem 1rem;
+      border-bottom: 1px solid var(--hairline);
+      background: var(--wash);
+      color: var(--muted);
+    }
+    .estcard.rosa .est-head { color: var(--accent); }
+    .estcard .est-math { padding: 0.4rem 1rem; overflow-x: auto; font-size: 0.78rem; }
+    .estcard.rosa .est-math { font-size: 0.71rem; }
+    .estcard .est-note { padding: 0 1rem 0.6rem; font-size: 0.8rem; color: var(--muted); }
+    /* code font/padding sized so the longest JAX line (49 chars) fits the half-width card without side-scroll */
+    .estcard pre { border: 0; border-top: 1px solid var(--hairline); border-radius: 0; margin: 0; font-size: 0.66rem; padding: 0.9rem 0.7rem; }
+
+    pre {
+      background: var(--wash);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 1rem 1.15rem;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.74rem;
+      line-height: 1.7;
+      color: #3c4048;
+    }
+    pre .cm { color: var(--faint); }
+    pre .hl { background: rgba(214, 51, 108, 0.11); border-radius: 3px; padding: 0.06rem 0.15rem; margin: -0.06rem -0.15rem; }
+
+    .bibtex-wrap { position: relative; margin-top: 1.4rem; }
+    .bibtex-wrap pre { font-size: 0.78rem; }
+    .copy-btn {
+      position: absolute; top: 0.6rem; right: 0.6rem;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem; font-weight: 600;
+      color: var(--muted);
+      background: #fff;
+      border: 1px solid var(--hairline);
+      border-radius: 6px;
+      padding: 0.25rem 0.65rem;
+      cursor: pointer;
+    }
+    .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    footer { border-top: 1px solid var(--hairline); padding: 2.2rem 0 4rem; font-size: 0.8rem; color: var(--faint); }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+
+<div class="col">
+  <header>
+    <h1>Using Reward Uncertainty to Induce Diverse Behaviour in Reinforcement&nbsp;Learning</h1>
+    <div class="authors">
+      <a href="https://im-ant.github.io/">Anthony GX-Chen</a><sup>*1&dagger;</sup>,
+      <a href="https://sites.google.com/view/ankitsanand/home">Ankit Anand</a><sup>*2</sup>,
+      <a href="https://scholar.google.com/citations?user=CiUedsUAAAAJ">Gheorghe Comanici</a><sup>*2</sup>,
+      <a href="https://scholar.google.com/citations?user=i27Wt-cAAAAJ">Zaheer Abbas</a><sup>2</sup>,
+      <a href="https://eseraygun.com/">Eser Ayg&uuml;n</a><sup>2</sup>,
+      <a href="https://www.linkedin.com/in/david-smalling-9813314">David Smalling</a><sup>2</sup>,
+      <a href="https://scholar.google.com/citations?user=1UqGNJIAAAAJ">Shibl Mourad</a><sup>2</sup>,
+      <a href="https://www.cs.mcgill.ca/~dprecup/">Doina Precup</a><sup>2</sup>,
+      <a href="https://sites.google.com/view/andrebarreto">Andr&eacute; Barreto</a><sup>*2</sup>,
+      <a href="https://sites.google.com/view/markrowland">Mark Rowland</a><sup>*2</sup>
+    </div>
+    <div class="affils">
+      <sup>1</sup>New York University &nbsp;&middot;&nbsp; <sup>2</sup>Google DeepMind<br>
+      <sup>*</sup>Core contributors &nbsp;&middot;&nbsp; <sup>&dagger;</sup>Work done as a student researcher at Google DeepMind
+    </div>
+    <div class="links">
+      <a href="https://arxiv.org/abs/2606.03962">arXiv</a>
+      <a href="https://arxiv.org/pdf/2606.03962">PDF</a>
+      <a href="https://github.com/im-ant/rosa">Code</a>
+      <a href="#bibtex">BibTeX</a>
+    </div>
+  </header>
+
+  <section>
+    <div class="kicker"><b>01</b> &mdash; TL;DR</div>
+    <p class="pullquote">
+      We should <b>not</b> ask for policy diversity directly. Instead, we 
+      should characterize our <b>uncertainty</b> in the reward function, and train a
+      policy that <b>calibrates</b> its action probabilities to the reward uncertainty.
+    </p>
+  </section>
+
+  <!-- ===================== INTRO (your draft prose, verbatim) ===================== -->
+  <section>
+    <div class="kicker"><b>02</b> &mdash; Introduction</div>
+    <p>
+      The ability to generate diverse outputs is an important and desirable property of modern generative
+      models. In post-training, the loss of diversity&mdash;entropy collapse&mdash;causes the
+      model to concentrate its probability mass and be confidently wrong. Beyond reliability, diversity 
+      is fundamental to generative <em>creativity</em>, enabling models to propose novel ideas, 
+      designs, and solutions. More fundamentally, diversity enables <em>discovery</em>: 
+      models can search vast spaces of possible molecules, materials, and hypotheses, helping
+      humanity discover fundamentally new knowledge.
+    </p>
+    <p class="q">But what do we <b>really</b> mean when we &ldquo;want diversity&rdquo;?</p>
+    <p>
+      There are certainly examples where diversity is <em>undesirable</em>. For example, if a policy 
+      wishes to get a high score on Atari Breakout, it may wish to play in a deterministic, reliable way. 
+      In fact, reinforcement learning theory says that (in MDPs) there is always a deterministic policy whose
+      expected reward is at least as high as that of any stochastic policy.
+    </p>
+    <p>
+      In these scenarios, diversity is a desirable property only when we have 
+      <em>epistemic uncertainty</em> about the optimal action:
+    </p>
+    <div style="margin-left: 1.5em;">
+      <ul>
+        <li>We are unsure about the correct answer to an unseen question.</li>
+        <li>A user's preferences are underspecified by the prompt.</li>
+        <li>A generated molecule's true usefulness requires confirmation in a wet lab.</li>
+      </ul>
+    </div>
+    <p>
+      In other words, when there are multiple plausible reward functions consistent
+      with the information we have, maintaining diversity allows a generative model to 
+      hedge across these possibilities, rather than prematurely committing to a single one.
+      This is the central thesis behind the design of our new post-training objective:
+    </p>
+    <p class="q">
+      Diversity is a rational response to <b>uncertainty</b> about 
+      the true reward function.</p>
+    <p>
+      Rather than explicitly trying to engineer diversity, we should better
+      characterize our uncertainty in the reward function, then design an 
+      objective that correctly calibrates the action probabilities to that uncertainty.
+    </p>
+
+    <figure data-fig="example-tasks">
+      <img src="static/images/example-tasks.webp" width="1800" height="1066" alt="Two settings that call for diverse policies: multiple correct answers, and reward model uncertainty.">
+      <figcaption class="figcap">
+        Examples of tasks that demand diversity and how they are naturally expressible as
+        distributions over reward functions.
+        <em>Left:</em> a binary-reward task with several correct actions.
+        <em>Right:</em> a learned reward model has epistemic uncertainty about the user's true preference.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================== ROSA: CALIBRATING DIVERSITY ===================== -->
+  <section>
+    <div class="kicker"><b>03</b> &mdash; The ROSA objective</div>
+    <h2>ROSA: calibrating action diversity to reward uncertainty</h2>
+    <p>
+      We design an objective that treats reward function uncertainty as a 
+      first-class citizen. We will see how this naturally leads to
+      action diversity <em>along the dimensions where we are uncertain</em>.
+    </p>
+
+    <p>
+      We refer to this as the <b>R</b>andomized <b>O</b>bjective, <b>S</b>et 
+      <b>A</b>ctions (<b>ROSA</b>) criterion. It is defined by an expectation over 
+      a <em>distribution of reward functions</em> ($R \sim \rho$) and a <em>(multi)set</em> of $n$ 
+      actions sampled i.i.d. from the policy $\pi$, $(Y_1, \ldots, Y_n)$.
+      At the core of the objective is a <em>nonlinear set aggregation function</em> over the rewards
+      of the $n$ actions. We discuss a general <em>family</em> of set functions
+      in later sections; for now, we focus on the simple choice of the $\max$ 
+      set function:
+    </p>
+    <div class="eq">
+      $$\mathcal{J}_{\text{ROSA+Max}}(\pi) \;=\; \mathbb{E}_{Y_1,\ldots,Y_n\overset{\mathrm{i.i.d.}}{\sim}\pi}\!\left[\,\mathbb{E}_{R\sim\rho}\!\left[\,\max_{1\le i\le n} R(Y_i)\right]\right]$$
+    </div>
+    <figure data-fig="computation">
+      <img src="static/images/rosa-max-computation.webp" width="1800" height="983" alt="ROSA+Max computation: per-reward-function max-of-n performance, aggregated over the reward distribution.">
+      <figcaption class="figcap">
+        Schematic of ROSA+Max: compute the policy&rsquo;s max-of-$n$ performance 
+        ($J_k$) for <em>each</em> reward function $R_k$,
+        then take the weighted average with the per-reward-function probabilities $\rho(R_k)$.
+      </figcaption>
+    </figure>
+
+    <p>
+      The following interactive example shows ROSA in action and compares it 
+      with a popular alternative: policy gradient (PG) with entropy regularization.
+      There are four reward functions ($R_1, \ldots, R_4$), and it is possible 
+      to configure how much they agree by dragging the reward functions around 
+      in the figure. 
+      Both policies are optimized <em>live</em> with gradient descent!
+    </p>
+
+    <div class="widget" id="calib-widget" data-fig="calib">
+      <div class="panels">
+        <div class="cpanel">
+          <div class="pcap">reward functions</div>
+          <div class="cwrap"><canvas></canvas><div class="drag-hint">drag &#8597;</div></div>
+        </div>
+        <div class="cgroup">
+          <div class="cpanel"><div class="pcap">PG + entropy</div><canvas></canvas></div>
+          <div class="cpanel"><div class="pcap">ROSA+Max</div><canvas></canvas></div>
+        </div>
+      </div>
+      <div class="widget-bar">
+        <label class="ctl">entropy&nbsp;
+          <input type="range" class="lam-slider" min="0" max="100" step="1" value="25">
+          <span class="lam-label">&lambda; = 0.05</span>
+        </label>
+        <label class="ctl">set size&nbsp;
+          <input type="range" class="n-slider" min="2" max="16" step="1" value="8">
+          <span class="n-label">n = 8</span>
+        </label>
+        <button class="reset-btn">reset</button>
+      </div>
+      <div class="fineprint figcap">
+        <b>Four reward functions over a 1-D action space</b>,
+        $R_k: \mathcal{X} \times \mathcal{Y} \rightarrow \mathbb{R}$, with
+        weights 40/30/20/10%. Lines indicate the optimal action $y^*$ for each state $x$.
+        <em>Drag a line up or down to reshape that reward function</em>.
+        <b>Middle and right:</b> policies optimized under different objectives in
+        response to the four reward functions.
+        <b>Middle:</b> entropy-regularized policy gradient. The policy either collapses to
+        the dominant ridge (low entropy) or smears mass onto actions that no
+        reward function endorses (high entropy). <b>Right:</b> the ROSA+Max policy,
+        which covers every ridge in proportion to its weight.
+        Both panels are optimized live with gradient descent and use the same
+        optimizer and step budget.
+      </div>
+    </div>
+
+    <p class="note">
+      N.B. Choosing the <em>max</em> set function
+      recovers ReMax, which was originally developed as an MDP exploration method
+      (<a href="https://openreview.net/forum?id=GKsNIC_mQRG">Koyamada et al. (2022)</a>,
+      <a href="https://arxiv.org/abs/2606.00151">Nishimori et al. (2026)</a>).
+    </p>
+
+    <p class="note">
+      N.B. In the special case of a <em>single</em> reward function, ROSA+Max 
+      reduces to pass-at-$k$ optimization 
+      (<a href="https://proceedings.mlr.press/v267/tang25o.html">Tang et al. (2025)</a>,
+      <a href="https://papers.nips.cc/paper_files/paper/2025/hash/df8a1a6306c3bcc89f6078759feadf62-Abstract-Conference.html">Walder and Karkhanis (2025)</a>,
+      <a href="https://openreview.net/forum?id=GKsNIC_mQRG">Koyamada et al. (2022)</a>).
+    </p>
+    
+  </section>
+
+  <!-- ===================== ONE-LINE CODE CHANGE ===================== -->
+  <section id="estimator">
+    <div class="kicker"><b>04</b> &mdash; The Advantage Estimator</div>
+    <h2>Single change from standard policy gradient</h2>
+    <p>
+      Implementing the ROSA+Max advantage estimator requires only a single
+      change to standard policy gradient, assuming each action is already
+      evaluated under each reward function (or under a sample of reward functions
+      from $\rho$). Below we contrast the ROSA+Max estimator against the standard
+      policy gradient estimator, given $n$ sampled actions (i.e., &ldquo;group size&rdquo;)
+      and $m$ reward functions, each assigned probability $\rho_k := \rho(R_k)$.
+      Both estimators use an optional leave-one-out baseline as an unbiased way
+      to reduce variance (see the paper for a more general
+      class of unbiased baselines).
+    </p>
+
+    <div class="twocol">
+      <div class="estcard">
+        <div class="est-head">standard PG (RLOO)</div>
+        <div class="est-math">
+          $$\hat g = \sum_{i=1}^n \Big( \bar R(Y_i) - \underbrace{\textcolor[RGB]{214,51,108}{\tfrac{1}{n-1}\textstyle\sum_{j\neq i} \bar R(Y_j)}}_{\textcolor[RGB]{214,51,108}{\text{mean of the others}}} \Big) \nabla \log \pi_\theta(Y_i)$$
+        </div>
+        <div class="est-note">averaged rewards: $\bar R (Y_i) = \sum_{k=1}^m \rho_k R_k(Y_i)$</div>
+<pre><code>def rloo_advantage_fn(reward_samples, rhos):
+    <span class="cm">"""
+    reward_samples: [n, m]
+        n actions, m reward functions
+    rhos: [m,] weight for each function
+    """</span>
+    n = reward_samples.shape[0]
+<span class="hl">    r_bar = reward_samples @ rhos</span>  <span class="cm"># [n,] </span>
+
+    <span class="cm"># (optional baseline)</span>
+    <span class="cm"># mean of the others over averaged rewards</span>
+<span class="hl">    loo_mean = (r_bar.sum() - r_bar) / (n - 1)</span>
+
+    adv = r_bar - loo_mean
+    return adv</code></pre>
+      </div>
+
+      <div class="estcard rosa">
+        <div class="est-head">ROSA+Max (ours)</div>
+        <div class="est-math">
+          $$\hat g = \sum_{k=1}^{m} \rho_k \sum_{i=1}^n \Big( 
+            \max_{1\leq j \leq n} R_k(Y_j) - \underbrace{\textcolor[RGB]{214,51,108}{\max_{j\neq i} R_k(Y_j)}}_{\textcolor[RGB]{214,51,108}{\text{max of the others}}} 
+          \Big) \nabla \log \pi_\theta(Y_i)$$
+        </div>
+        <div class="est-note">max-of-n score for each $R_k$</div>
+<pre><code>def rosa_max_advantage_fn(reward_samples, rhos):
+    <span class="cm">"""
+    reward_samples: [n, m]
+        n actions, m reward functions
+    rhos: [m,] weight for each function
+    """</span>
+    n = reward_samples.shape[0]
+<span class="hl">    r_maxs = reward_samples.max(axis=0)</span>  <span class="cm"># [m,]</span>
+
+    <span class="cm"># (optional baseline)</span>
+    <span class="cm"># max of others per reward fn</span>
+<span class="hl">    loo_max = np.stack([
+        np.delete(reward_samples, i, axis=0).max(axis=0)
+        for i in range(n)
+    ])</span>  <span class="cm"># [n, m]</span>
+
+    advs = r_maxs[None, :] - loo_max
+    return advs @ rhos</code></pre>
+      </div>
+    </div>
+
+    <p>
+      To understand why ROSA behaves fundamentally differently from standard
+      policy gradient, we can compare how they calculate advantages.
+      Suppose we have two reward functions and three actions:
+    </p>
+    <ul class="points">
+      <li>$R_1$ likes apple (🍎).</li>
+      <li>$R_2$ likes strawberry (🍓).</li>
+      <li>Nobody likes broccoli (🥦).</li>
+    </ul>
+    <p>
+      The following interactive figure shows how standard PG and ROSA+Max
+      lead to different advantages for each sampled action. 
+    </p>
+
+    <div class="widget adv-trace" id="adv-widget-bags" data-fig="advtrace-bags" data-adv-mode="formula">
+      <div class="adv-head">
+        <div class="adv-scenario"></div>
+        <div class="adv-def">Δ<sub>k</sub> = max<sub>j</sub> R<sub>k</sub> − max<sub>j≠i</sub> R<sub>k</sub></div>
+      </div>
+      <div class="adv-panels"></div>
+      <div class="adv-explain"></div>
+      <div class="widget-bar">
+        <span class="seg">
+          <button class="preset-btn active" data-preset="multiple">zero-one</button>
+          <button class="preset-btn" data-preset="competing">opposing</button>
+        </span>
+        <span class="bag-seg">
+          <button class="bag-btn" data-bag="1,0,3">🍎🥦🥦🥦</button>
+          <button class="bag-btn active" data-bag="2,1,1">🍎🍎🍓🥦</button>
+          <button class="bag-btn" data-bag="1,1,2">🍎🍓🥦🥦</button>
+          <button class="bag-btn" data-bag="3,1,0">🍎🍎🍎🍓</button>
+        </span>
+        <span class="fineprint">Hover over row for precise advantage calculation · click a bag to reshuffle</span>
+      </div>
+      <div class="fineprint figcap">
+        <b>Advantage calculations for a multiset of 4 actions</b> for standard
+        policy gradient (PG) and ROSA+Max, both with leave-one-out (LOO) baselines.
+        <b>Left buttons</b>: reward functions, either 0/1 reward or opposing 
+        (+1/-1) rewards. Note that <em>opposing</em> rewards result in reward 
+        cancellation and <em>no learning</em> for PG.
+        <b>Right buttons</b>: multiset composition
+        (e.g. $(Y_1, \ldots , Y_4) = (\text{🍎🍎🍓🥦})$ means 2 apples, 1 strawberry, 
+        and 1 broccoli). Select different multisets to see how each one changes
+        the advantages produced by PG and ROSA+Max.
+      </div>
+    </div>
+
+    <p>
+      The consequence of the above advantage calculation is that the ROSA+Max
+      objective has a fundamentally different global optimum from the standard
+      policy-gradient objective. As the simplex diagram below shows,
+      in the space of all three-category policies, PG does not distinguish between
+      deterministic and stochastic high-reward optima and tends to converge to
+      a deterministic one. On the other hand, ROSA+Max has a global optimum 
+      that is maximally diverse: sampling the good actions (🍎 and 🍓) with
+      equal probability.
+    </p>
+    <div class="widget" id="flow-sgdm-tr-widget" data-fig="flow-sgdm-tr">
+      <div class="panels tri"><canvas></canvas><canvas></canvas><canvas class="trace-canvas"></canvas></div>
+      <div class="widget-bar">
+        <span class="step-count fineprint"></span>
+        <button class="replay-btn">resample</button>
+      </div>
+      <div class="fineprint figcap">
+        <b>Optimization trajectories for ROSA and Standard PG</b> given uniformly
+        weighted reward functions. <b>Left:</b> Probability simplices over the
+        space of three actions. Actions 🍎 and 🍓 receive $R=1$, while 🥦 receives $R=0$. 
+        We randomly sample 24 initializations and optimize the ROSA and PG 
+        objectives using gradient descent with momentum. 
+        Only ROSA converges to the maximally diverse optimal policy, which samples 
+        the two optimal actions (🍎 and 🍓) with equal probability. 
+        <b>Right:</b> Corresponding expected reward and entropy over
+        the course of optimization for ROSA and PG.
+      </div>
+    </div>
+
+    <p class="q">
+      For binary rewards and a unique optimal action for each reward function,
+      ROSA+Max <b>provably</b> has a maximally diverse, high-reward
+      global optimum for <b>any</b> categorical policies.
+    </p>
+
+  </section>
+
+  <!-- ===================== CONTROLLABLE DIVERSITY ===================== -->
+  <section>
+    <div class="kicker"><b>05</b> &mdash; Controllability</div>
+    <h2>Controllable diversity through the reward function distribution</h2>
+    <p>
+      So far, our analysis has assumed that the reward function distribution $\rho$ places
+      <i>equal</i> weight on all reward functions, 
+      $\rho(R_1) = \rho(R_2) = \ldots = \rho(R_m) = \frac{1}{m}$.
+      A key property of ROSA is that the optimal policy responds to the
+      reward function distribution. For instance, if we are more confident that $R_2$
+      is the correct reward function, the optimal ROSA+Max policy will assign more
+      probability to the preferred action under $R_2$, while
+      retaining some probability on the preferred action under $R_1$.
+    </p>
+    <p>
+      You can see how the reward function distribution affects the optimal ROSA
+      and standard PG policies below. The PG objective cannot
+      target a specific stochastic policy, and will always prefer a deterministic
+      policy placing <em>all</em> probability mass on the preferred action with 
+      greater weight. ROSA lets us control
+      <em>exactly</em> where the optimal policy lies.
+    </p>
+
+    <div class="widget" id="ctrl-widget" data-fig="ctrl">
+      <div class="panels"><canvas></canvas><canvas></canvas></div>
+      <div class="widget-bar">
+        <label class="ctl">
+          <span class="rho-label-a">&rho;(R<sub>1</sub>)=60%</span>
+          <input type="range" class="rho-slider" min="0" max="100" step="1" value="40">
+          <span class="rho-label-b">&rho;(R<sub>2</sub>)=40%</span>
+        </label>
+        <label class="ctl">set size&nbsp;
+          <input type="range" class="n-slider" min="2" max="8" step="1" value="2">
+          <span class="n-label">n = 2</span>
+        </label>
+        <span class="opt-readout fineprint step-count"></span>
+      </div>
+      <div class="fineprint figcap">
+        <b>Optimization landscape for non-uniformly weighted reward functions</b>.
+        $R_1$ rewards +1 for 🍎, $R_2$ rewards +1 for 🍓, $R=0$ for all else. 
+        Drag the left slider to change the relative weighting of $R_1$ and $R_2$.
+        ROSA+Max's optimal policy is <em>controllable</em> through
+        changing the relative weights of $R_1$ and $R_2$, while PG converges to
+        a deterministic policy optimal under the higher-weighted reward function.
+      </div>
+    </div>
+
+    <p>
+      In the case of ROSA+Max, how $\rho(R_k)$ translates to $\pi^*(y^*_k)$ is 
+      predictable and depends on the set size. We characterize their exact 
+      relationship in the paper.
+    </p>
+    <p class="q">
+      ROSA allows us to precisely define the optimal stochastic
+      policy we want through the reward function distribution, before performing
+      any RL updates.
+    </p>
+
+  </section>
+
+  <!-- ===================== BEYOND THE MAX ===================== -->
+  <section>
+    <div class="kicker"><b>06</b> &mdash; Beyond the max</div>
+    <h2>Beyond the max: a family of diversity-inducing set functions</h2>
+    <p>
+      So far we've exclusively used $\max$ as the set aggregation function in ROSA:
+    </p>
+    <div class="eq">
+      $$f_{\text{Max}}\big(R(Y_1),\ldots,R(Y_n)\big) \;=\; \max \Big(
+          R(Y_1) , \ldots , R(Y_n)
+      \Big)$$
+    </div>
+    <p>
+      This was a simple choice, but is there anything special about $\max$ 
+      in particular? It turns out the answer is &ldquo;no&rdquo;: there is a 
+      whole <em>family</em> of set functions that induce the maximally
+      diverse global optimum.
+    </p>
+    <p>
+      We analyze this in the paper and provide a proof in the case of binary 
+      rewards. In this setting, any general multiset function can be simplified
+      into a &ldquo;success count&rdquo; function, $\tilde{f}(\sum_{i=1}^n R(Y_i))$. Because
+      the individual rewards are binary, the function's value is determined 
+      entirely by the number of correct actions, $\sum_{i=1}^n R(Y_i)$. 
+      The theoretical result is paraphrased below:
+    </p>
+    <p class="q">
+      Any strictly increasing and strictly concave function $\tilde{f}$ of the sum of rewards
+      yields a ROSA+$f$ objective whose optimal policy samples the <b>correct actions</b>
+      from all reward functions <b>uniformly</b>.
+    </p>
+    <p>
+      Intuitively, this works because (i) a strictly increasing $\tilde{f}$ ensures
+      higher reward is always better, and (ii) concavity ensures we get more
+      marginal improvement by increasing the probability of a low-probability optimal action than
+      by increasing that of a high-probability one. It is also worth noting that standard PG corresponds
+      to $\tilde{f}(u) = u$, which is monotonically increasing but not 
+      strictly concave.
+    </p>
+    <p>
+      This result gives us a flexible design space for set aggregation functions.
+      This is especially useful because different set functions can have
+      different optimization landscapes and computational costs. We also experiment
+      with the <em>softmax</em>, which, in this binary-reward setting, induces a
+      strictly concave and increasing success-count function:
+    </p>
+    <div class="eq">
+      $$f_{\text{Softmax}}\big(R(Y_1),\ldots,R(Y_n)\big) \;=\; \sum_{i=1}^{n} \frac{e^{R(Y_i)}}{\sum_{j} e^{R(Y_j)}}\, R(Y_i)$$
+    </div>
+    <p>
+      You can design your own success-count set function below
+      and see how this affects the global optimum and optimization 
+      in this simple 3-action categorical simplex example.
+    </p>
+
+    <div class="widget" id="setfn-tr-widget" data-fig="setfn-tr">
+      <div class="panels tri"><canvas class="f-canvas"></canvas><canvas class="s-canvas"></canvas><canvas class="trace-canvas"></canvas></div>
+      <div class="widget-bar">
+        <span class="seg">
+          <button class="sf-btn" data-f="max" data-cat="diverse">max</button>
+          <button class="sf-btn active" data-f="softmax" data-cat="diverse">softmax</button>
+          <button class="sf-btn" data-f="mean" data-cat="det">mean (PG)</button>
+          <button class="sf-btn" data-f="convex" data-cat="collapse">convex</button>
+        </span>
+        <span class="ctl">
+          <span class="step-count"></span>
+          <button type="button" class="replay-btn">resample</button>
+        </span>
+      </div>
+      <span class="sf-badge fineprint"></span>
+      <div class="fineprint figcap">
+        <b>ROSA with arbitrary set functions $\tilde{f}$</b> and uniformly
+        weighted reward functions.
+        The $\max$ set function and all functions that are strictly increasing and 
+        strictly concave in the sum of rewards produce a maximally diverse 
+        optimal policy that samples the two optimal actions (🍎 and 🍓) with equal probability.
+        <b>Left</b>: Success count function 
+        $\tilde{f}: \mathbb{R} \rightarrow \mathbb{R}$, drag to design your own.
+        <b>Middle</b>: Optimization landscape and trajectories using ROSA+$\tilde{f}$.
+        <b>Right</b>: Corresponding policy reward and entropy over the course
+        of optimization.
+      </div>
+    </div>
+
+    <p>
+      We think studying how to design new set aggregation functions and
+      how those choices affect the optimization landscape
+      is an extremely exciting and valuable area for future work.
+    </p>
+
+  </section>
+
+  <!-- ===================== AT SCALE ===================== -->
+  <section>
+    <div class="kicker"><b>07</b> &mdash; At scale</div>
+    <h2>Does it hold up with large models?</h2>
+    <p>
+      So far we've focused on didactic, toy settings. We show here that ROSA 
+      works at the scale of large language models and comes essentially for free: 
+      ROSA is a <em>single</em> change 
+      to how the advantage is computed and drops directly into a standard RL 
+      post-training pipeline (although one does need to design how to 
+      characterize and sample from the distribution of reward functions). 
+    </p>
+    <p>
+      The paper reports a more extensive suite of experiments; here we highlight two 
+      illustrative results.
+    </p>
+    <p>
+      <b>Covering many reward functions at once.</b> We fine-tune Gemma&nbsp;2&nbsp;2B
+      on MATH with four reward functions, each preferring correct answers of
+      different lengths (e.g. concise or verbose answers). Standard PG
+      concentrates on a single dominant length. ROSA instead 
+      covers all four length preferences, with <em>no cost</em> to overall pass@$k$.
+    </p>
+    <figure data-fig="math-lengths">
+      <img src="static/images/math-lengths.webp" width="1800" height="517" loading="lazy" alt="MATH with four length-band reward functions: ROSA covers all four styles at no overall pass@k cost.">
+      <figcaption class="figcap">
+        <b>ROSA on MATH learns both verbose and concise reasoning</b>.
+        We train Gemma 2 2B with four reward functions, each preferring 
+        correct answers in a different length range. Standard PG concentrates 
+        on one reasoning style (400&ndash;1.6k); ROSA covers all four 
+        bands with no loss in overall pass@$k$.
+      </figcaption>
+    </figure>
+    <p>
+      <b>Robustness to reward uncertainty.</b> The second result shows that hedging is
+      the right response when we are genuinely <em>uncertain</em> about the 
+      reward. Consider a panel of eight noisy judges (in practice, verifiable
+      reward functions that reward either the correct answer or a plausible yet incorrect
+      one). As judge accuracy degrades, ROSA holds up gracefully while
+      standard PG and pessimistic ensemble baselines (min, mean&minus;stddev) 
+      degrade. Furthermore, this robustness transfers: when we evaluate the same
+      MATH-trained checkpoints zero-shot on AIME&nbsp;2025,
+      ROSA achieves higher out-of-distribution pass@$k$, showing how
+      uncertainty-calibrated diversity can pay off on unseen, hard problems. 
+    </p>
+    <figure data-fig="judges">
+      <div class="imgrow">
+        <img src="static/images/noisy-judges-wbl.webp" width="1515" height="854" loading="lazy" alt="Pass@8 under decreasing judge accuracy: ROSA degrades more gracefully than PG and pessimistic ensemble baselines.">
+        <img src="static/images/aime-ood.webp" width="1001" height="636" loading="lazy" alt="Zero-shot OOD pass@k on AIME 2025 from MATH-trained checkpoints.">
+      </div>
+      <figcaption class="figcap">
+        <b>ROSA is robust to uncertain rewards and generalizes better OOD</b>.
+        We train Gemma with a panel of eight noisy judges at different accuracy
+        levels. <b>Left:</b> in-domain pass@8 as judge accuracy
+        degrades. ROSA holds up better than standard PG and ensemble baselines. 
+        <b>Right:</b> zero-shot evaluation of the same MATH-trained 
+        checkpoints on unseen AIME&nbsp;2025 questions. ROSA's OOD pass rate is
+        higher than those of the PG-trained and base models.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================== CONCLUSION ===================== -->
+  <section>
+    <div class="kicker"><b>08</b> &mdash; Conclusion</div>
+    <h2>Where this leaves us</h2>
+    <p>
+      Our central thesis is that diversity should not be bolted on, but <em>calibrated</em>: the
+      right amount of action diversity is a rational response to how uncertain we are about the true
+      reward function. When there is a single, known objective, a confident deterministic policy is
+      exactly right; when several reward functions are plausible, the policy should hedge across
+      them, and precisely along the dimensions where that uncertainty lives.
+    </p>
+    <p>
+      ROSA is our proposal for turning that principle into an objective. By taking an expectation
+      over a distribution of reward functions and applying a nonlinear set-aggregation function to a
+      group of sampled actions, ROSA induces diversity that is calibrated to reward uncertainty.
+      It also slots directly into standard policy-gradient post-training.
+    </p>
+    <p>
+      We conclude with some open directions.
+      The <em>family</em> of diversity-inducing set functions is largely 
+      unexplored, and different choices yield different
+      optimization landscapes and efficiency trade-offs. 
+      Generalizing this to sequential problems is also a natural and 
+      important next step. More broadly, we are excited about better ways to 
+      <em>characterize</em> reward function uncertainty,
+      as this is the distribution that ultimately controls the ROSA policy.
+    </p>
+  </section>
+
+  <section id="bibtex">
+    <div class="kicker"><b>09</b> &mdash; Citation</div>
+    <div class="bibtex-wrap">
+      <button class="copy-btn" onclick="copyBib(this)">Copy</button>
+      <pre id="bib">@misc{gxchen2026rosa,
+  title={Using Reward Uncertainty to Induce Diverse Behaviour
+         in Reinforcement Learning},
+  author={Anthony GX-Chen and Ankit Anand and Gheorghe Comanici
+          and Zaheer Abbas and Eser Ayg{\"u}n and David Smalling
+          and Shibl Mourad and Doina Precup and Andr{\'e} Barreto
+          and Mark Rowland},
+  year={2026},
+  eprint={2606.03962},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/2606.03962}
+}</pre>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      &copy; 2026 &middot; <a href="https://arxiv.org/abs/2606.03962">Paper on arXiv</a> 
+      &middot; <a href="https://github.com/im-ant/rosa">Code on GitHub</a>
+    </p>
+  </footer>
+</div>
+
+<script>
+  function copyBib(btn) {
+    const done = label => { btn.textContent = label; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); };
+    if (!navigator.clipboard) { done('Select & copy'); return; }   // insecure origin or very old browser
+    navigator.clipboard.writeText(document.getElementById('bib').textContent)
+      .then(() => done('Copied'), () => done('Blocked'));          // permission denied: say so instead of failing silently
+  }
+
+  /* Figure numbering: every [data-fig] element (image figure or widget) gets a shared
+   * counter in DOM order; its .figcap is prefixed, and <a class="figref" href="#fig-slug">
+   * references resolve to "Figure N". Draft-shelf items carry no data-fig. */
+  document.addEventListener('DOMContentLoaded', () => {
+    const map = {};
+    document.querySelectorAll('[data-fig]').forEach((el, i) => {
+      const n = i + 1;
+      map[el.dataset.fig] = n;
+      if (!el.id) el.id = 'fig-' + el.dataset.fig;
+      const cap = el.querySelector('.figcap');
+      if (cap) {
+        const tag = `Figure ${n}.`;
+        cap.insertAdjacentHTML('afterbegin', `<span class="fig-no">${tag}</span> `);
+      }
+    });
+    document.querySelectorAll('a.figref').forEach(a => {
+      const slug = (a.getAttribute('href') || '').replace('#fig-', '');
+      if (map[slug]) a.textContent = 'Figure ' + map[slug];
+    });
+  });
+</script>
+
+</body>
+</html>
